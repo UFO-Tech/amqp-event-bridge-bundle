@@ -1,6 +1,6 @@
 {
     "name": "ufo-tech/rpc-mercure-transport",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "minimum-stability": "stable",
     "description": "Mercure transport layer for JSON-RPC event broadcasting between services.",
     "type": "component",

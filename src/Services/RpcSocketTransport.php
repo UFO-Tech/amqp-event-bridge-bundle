@@ -18,10 +18,15 @@ use Ufo\RpcMercure\Exceptions\RpcMercureRequestException;
 use Ufo\RpcObject\RpcRequest;
 
 use function explode;
+use function json_decode;
+use function json_encode;
 use function str_replace;
 use function str_starts_with;
+use function strpos;
 use function substr;
 use function trim;
+
+use const PHP_EOL;
 
 class RpcSocketTransport
 {
@@ -91,40 +96,38 @@ class RpcSocketTransport
             ]
         );
 
+        $buffer = '';
         foreach ($this->http->stream($response) as $chunk) {
-            if (!$chunk->isLast() && $chunk->isTimeout()) {
+            if ($chunk->isTimeout()) {
                 continue;
             }
 
-            $buffer = trim($chunk->getContent());
-            if (empty($buffer) || $buffer === static::HEART_BIT) continue;
+            $buffer .= $chunk->getContent();
+            while (($pos = strpos($buffer, "\n\n")) !== false) {
+                $rawEvent = substr($buffer, 0, $pos);
+                $buffer = substr($buffer, $pos + 2);
 
-            $lines = explode("\n", $buffer);
-            $id = null;
-            $payloadJson = null;
-            $clearBuffer = str_replace('data:', '', $buffer);
+                $id = null;
+                $data = [];
 
-            foreach ($lines as $line) {
-                if (str_starts_with($line, 'id:')) {
-                    $id = trim(substr($line, 3));
-                    continue;
-                } elseif (str_starts_with($line, 'data:')) {
-                    $payloadJson .= trim(substr($line, 5));
-                    continue;
+                foreach (explode("\n", $rawEvent) as $line) {
+                    if (str_starts_with($line, 'id:')) {
+                        $id = trim(substr($line, 3));
+                    } elseif (str_starts_with($line, 'data:')) {
+                        $data[] = substr($line, 5);
+                    }
                 }
-                throw new RpcMercureRequestException('Unsupported row format in ' . $clearBuffer);
-            }
-            if (!$id || !$payloadJson) {
-                return;
-            }
 
-            $this->eventFactory->fire(
-                new MercureEvent(
-                    $topicName,
-                    $payloadJson,
-                    $callback
-                )
-            );
+                if ($id && $data ) {
+                    $this->eventFactory->fire(
+                        new MercureEvent(
+                            $topicName,
+                            implode(PHP_EOL, $data),
+                            $callback
+                        )
+                    );
+                }
+            }
         }
 
     }
